@@ -150,3 +150,15 @@ All colors MUST be HSL.
     scrollbar-width: none;
   }
 }
+
+/* --- Lovable Badge Remover --- */
+a[href*="lovable.dev"], 
+.lovable-badge,
+div[data-lovable-project-id] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+}
