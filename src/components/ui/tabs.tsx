@@ -1,7 +1,8 @@
+// File: src/components/ui/tabs.tsx
 "use client";
 
 import * as React from "react";
-import { cn } from "@/lib/utils"; // Ye line zaroori hai
+import { cn } from "@/lib/utils";
 
 const TabsContext = React.createContext<{
   activeTab: string;
