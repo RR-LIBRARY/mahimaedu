@@ -4,7 +4,7 @@ import { supabase } from "../supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/AuthContext";
+// import { useAuth } from "@/contexts/AuthContext"; // Debugging ke liye iski jarurat nahi hai abhi
 import { toast } from "sonner";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 import logo from "@/assets/logo.png";
@@ -14,7 +14,7 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  // const { login } = useAuth(); // Context hata diya taki direct check kar sakein
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -25,15 +25,39 @@ const Login = () => {
       return;
     }
 
-    setIsLoading(true);
-    const success = await login(email, password);
-    setIsLoading(false);
+    try {
+      setIsLoading(true);
 
-    if (success) {
-      toast.success("Welcome back!");
-      navigate("/dashboard");
-    } else {
-      toast.error("Invalid email or password");
+      // --- NEW DEBUGGING CODE START ---
+      
+      // 1. Direct Supabase Call (Context ko bypass karke)
+      // .trim() lagaya hai taaki space ki galti na ho
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password,
+      });
+
+      // 2. Error Handling with Alert for Mobile
+      if (error) {
+        console.error("Login Error:", error);
+        
+        // MOBILE ALERT: Ye popup aayega agar login fail hua
+        alert("Login Failed: " + error.message); 
+        
+        toast.error(error.message);
+      } else {
+        // 3. Success
+        toast.success("Welcome back!");
+        navigate("/dashboard");
+      }
+      
+      // --- NEW DEBUGGING CODE END ---
+
+    } catch (err: any) {
+      alert("System Error: " + err.message);
+      toast.error("Something went wrong");
+    } finally {
+      setIsLoading(false);
     }
   };
 
