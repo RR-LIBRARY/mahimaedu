@@ -25,8 +25,7 @@ const Courses = () => {
   const fetchCourses = async () => {
     try {
       setLoading(true);
-      // Fetch data matching your SQL columns
-      // Console log lagaya hai taaki hum check kar sakein ki data aa raha hai ya error
+      
       const { data, error } = await supabase
         .from('courses')
         .select('*')
@@ -38,8 +37,18 @@ const Courses = () => {
       }
       
       if (data) {
-        console.log("Fetched Data:", data); // Console me data dikhega
-        setCourseList(data);
+        // Data Transformation: Taki agar DB me kuch null ho to app crash na ho
+        const safeData = data.map((item: any) => ({
+          ...item,
+          // Agar DB me 'grade' string "10" hai to use number 10 bana dete hain (Component safety ke liye)
+          grade: Number(item.grade) || 0,
+          // Agar image url null hai, to placeholder image laga denge
+          image_url: item.image_url || item.thumbnail_url || "https://placehold.co/600x400/png?text=Course+Image",
+          description: item.description || "No description available",
+          price: Number(item.price) || 0
+        }));
+
+        setCourseList(safeData);
       }
     } catch (error) {
       console.error("Error fetching courses:", error);
@@ -76,22 +85,6 @@ const Courses = () => {
 
       <main className="flex-1 p-4 space-y-4">
         
-        {/* --- DEBUG BOX (Testing ke liye) --- */}
-        {/* Ye box sirf ye dikhane ke liye hai ki database se kya aa raha hai */}
-        <div className="p-4 bg-yellow-100 border border-yellow-500 rounded-md text-sm text-black mb-4">
-            <p className="font-bold border-b border-yellow-600 mb-2 pb-1">🔍 Debugging Panel (Only for Testing)</p>
-            <p><strong>Loading Status:</strong> {loading ? "Loading..." : "Finished"}</p>
-            <p><strong>Total Courses Found:</strong> {courseList.length}</p>
-            <p><strong>Raw Data from DB:</strong></p>
-            <pre className="bg-white p-2 mt-1 rounded border overflow-auto max-h-32 text-xs">
-                {JSON.stringify(courseList, null, 2)}
-            </pre>
-            <p className="mt-2 text-xs text-gray-600">
-                * Agar yahan "[]" (khali bracket) dikh raha hai, to iska matlab Supabase RLS Policy data ko rok rahi hai.
-            </p>
-        </div>
-        {/* --- END DEBUG BOX --- */}
-
         {/* Filter Section */}
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
@@ -114,7 +107,7 @@ const Courses = () => {
 
         {/* Course Grid */}
         {loading ? (
-          <div className="text-center py-12 text-muted-foreground">Loading courses from database...</div>
+          <div className="text-center py-12 text-muted-foreground">Loading courses...</div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredCourses.map((course) => (
