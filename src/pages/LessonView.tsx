@@ -1,37 +1,31 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import PlyrPlayer from "@/components/video/PlyrPlayer";
+import PlyrPlayer from "@/components/video/PlyrPlayer"; // Ensure this path is correct
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
-  ArrowLeft, 
-  Play, 
-  CheckCircle, 
-  Lock, 
-  Clock,
-  BookOpen,
-  ChevronRight,
-  Loader2,
-  AlertCircle
+  ArrowLeft, Play, Lock, Clock, BookOpen, 
+  Loader2, FileText, MessageCircle, Share2, Star, CheckCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-// Type definitions matching Supabase
+// Type definitions
 interface Lesson {
   id: number;
   title: string;
   duration: string;
-  video_url: string; // Supabase uses video_url
-  is_free: boolean;  // Supabase uses is_free
+  video_url: string;
+  is_free: boolean;
   sequence_no: number;
+  description?: string; // Added for Overview tab
 }
 
 const LessonView = () => {
-  // Retrieve URL params: /lessons?courseId=XYZ
   const [searchParams] = useSearchParams();
   const courseId = searchParams.get("courseId"); 
   const navigate = useNavigate();
@@ -44,9 +38,11 @@ const LessonView = () => {
   
   // Access Control
   const [hasPurchased, setHasPurchased] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+  
+  // Tabs State (Student Experience)
+  const [activeTab, setActiveTab] = useState("overview");
 
-  // 1. Fetch Data & Check Access
+  // --- 1. DATA FETCHING (Keep exact logic to maintain connection) ---
   useEffect(() => {
     const initPage = async () => {
       if (!courseId) return;
@@ -54,11 +50,9 @@ const LessonView = () => {
       try {
         setLoading(true);
 
-        // A. Get User
         const { data: { user } } = await supabase.auth.getUser();
-        setUserId(user?.id || null);
 
-        // B. Check Purchase Status (If user is logged in)
+        // Check Purchase
         if (user) {
           const { data: enrollment } = await supabase
             .from('enrollments')
@@ -71,28 +65,25 @@ const LessonView = () => {
           if (enrollment) setHasPurchased(true);
         }
 
-        // C. Fetch Course Details
+        // Fetch Course
         const { data: courseData, error: courseError } = await supabase
           .from('courses')
           .select('*')
           .eq('id', courseId)
           .single();
-        
         if (courseError) throw courseError;
         setCourse(courseData);
 
-        // D. Fetch Lessons
+        // Fetch Lessons
         const { data: lessonData, error: lessonError } = await supabase
           .from('lessons')
           .select('*')
           .eq('course_id', courseId)
           .order('sequence_no', { ascending: true });
-
         if (lessonError) throw lessonError;
         
         setLessons(lessonData || []);
         
-        // Set First Lesson
         if (lessonData && lessonData.length > 0) {
           setCurrentLesson(lessonData[0]);
         }
@@ -108,247 +99,218 @@ const LessonView = () => {
     initPage();
   }, [courseId]);
 
-  // Logic: Can user watch this video?
+  // --- Logic ---
   const canAccessLesson = (lesson: Lesson) => {
-    return lesson.is_free || hasPurchased; // Admin is free logic can be added
+    return lesson.is_free || hasPurchased;
   };
 
   const handleLessonClick = (lesson: Lesson) => {
     if (canAccessLesson(lesson)) {
       setCurrentLesson(lesson);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
-      toast.error("Please purchase the course to unlock this lesson");
-      // Optional: Redirect to buy page
+      toast.error("Course locked! Please buy to watch.");
       navigate(`/buy-course?id=${courseId}`);
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
       </div>
     );
   }
 
-  if (!course) {
-    return <div className="p-10 text-center">Course not found</div>;
-  }
+  if (!course) return <div className="p-10 text-center">Course not found</div>;
 
-  // Calculate Progress (Dummy logic for now, real implementation needs 'completed_lessons' table)
-  const completedCount = 0; 
-  const progressPercent = lessons.length > 0 ? (completedCount / lessons.length) * 100 : 0;
+  // Calculate Progress Logic
+  const completedLessons = 1; // Backend se aana chahiye, abhi dummy hai
+  const progressPercentage = Math.round((completedLessons / lessons.length) * 100);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-primary text-primary-foreground shadow-md">
-        <div className="flex items-center gap-3 px-4 py-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("/dashboard")}
-            className="text-primary-foreground hover:bg-primary-foreground/10"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-semibold truncate">{course.title}</h1>
-            <p className="text-xs text-primary-foreground/70">
-              {lessons.length} Lessons
-            </p>
-          </div>
-          
-          {/* Buy Button if not purchased */}
-          {!hasPurchased && (
-            <Button 
-              size="sm" 
-              variant="secondary"
-              onClick={() => navigate(`/buy-course?id=${courseId}`)}
-            >
-              Buy Now
-            </Button>
-          )}
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      
+      {/* --- HEADER (Clean & Minimal) --- */}
+      <header className="bg-white border-b h-16 flex items-center px-4 lg:px-6 sticky top-0 z-30 shadow-sm">
+        <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")} className="mr-2">
+          <ArrowLeft className="h-5 w-5 text-gray-600" />
+        </Button>
+        <div className="flex-1">
+            <h1 className="text-sm lg:text-base font-bold text-gray-800 line-clamp-1">
+                {course.title}
+            </h1>
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+                <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">Class {course.grade}</span>
+                <span>• {lessons.length} Lessons</span>
+            </div>
         </div>
+        {!hasPurchased && (
+            <Button size="sm" className="bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white shadow-md"
+            onClick={() => navigate(`/buy-course?id=${courseId}`)}>
+                Buy Now
+            </Button>
+        )}
       </header>
 
-      <div className="lg:flex">
-        {/* Main Content - Video Player */}
-        <main className="flex-1 p-4 lg:p-6">
-          {/* Video Player */}
-          <div className="mb-6 aspect-video bg-black rounded-xl overflow-hidden shadow-lg relative">
-            {currentLesson ? (
-               <PlyrPlayer
-                 videoId={currentLesson.video_url}
-                 poster={course.image_url}
-               />
-            ) : (
-               <div className="w-full h-full flex items-center justify-center text-white">
-                 Select a lesson to start
-               </div>
-            )}
-            
-            {/* Overlay if locked (Safety Check) */}
-            {currentLesson && !canAccessLesson(currentLesson) && (
-              <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10 p-4 text-center">
-                <Lock className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-xl font-bold text-white mb-2">Lesson Locked</h3>
-                <p className="text-gray-300 mb-4">Purchase this course to access all lessons.</p>
-                <Button onClick={() => navigate(`/buy-course?id=${courseId}`)}>
-                  Unlock Course
-                </Button>
-              </div>
-            )}
-          </div>
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+        
+        {/* --- LEFT: VIDEO PLAYER & TABS (Cinema Area) --- */}
+        <main className="flex-1 overflow-y-auto bg-white lg:bg-gray-100 p-0 lg:p-6">
+            <div className="max-w-5xl mx-auto space-y-6">
+                
+                {/* VIDEO CONTAINER */}
+                <div className="bg-black lg:rounded-2xl overflow-hidden shadow-2xl aspect-video relative group">
+                    {currentLesson ? (
+                        <PlyrPlayer
+                            videoId={currentLesson.video_url}
+                            poster={course.image_url}
+                        />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-white/50">Select a lesson</div>
+                    )}
 
-          {/* Lesson Info */}
-          {currentLesson && (
-            <div className="mb-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-bold text-foreground mb-2">
-                    {currentLesson.title}
-                  </h2>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-4 w-4" />
-                      {currentLesson.duration || "10 mins"}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <BookOpen className="h-4 w-4" />
-                      Grade {course.grade}
-                    </span>
-                  </div>
+                    {/* Locked Overlay */}
+                    {currentLesson && !canAccessLesson(currentLesson) && (
+                        <div className="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col items-center justify-center z-20 text-center p-6">
+                            <div className="bg-white/10 p-4 rounded-full mb-4">
+                                <Lock className="h-8 w-8 text-white" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-white mb-2">Content Locked</h2>
+                            <p className="text-gray-300 mb-6 max-w-md">
+                                This premium lesson is part of the full course. Unlock instant access to all {lessons.length} lessons.
+                            </p>
+                            <Button size="lg" className="bg-green-500 hover:bg-green-600 text-white font-bold px-8"
+                                onClick={() => navigate(`/buy-course?id=${courseId}`)}>
+                                Unlock Full Course
+                            </Button>
+                        </div>
+                    )}
                 </div>
-              </div>
-            </div>
-          )}
 
-          {/* Course Progress */}
-          {hasPurchased && (
-            <div className="bg-card rounded-xl p-4 border mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">Your Progress</span>
-                <span className="text-sm text-muted-foreground">
-                  0% Completed
-                </span>
-              </div>
-              <Progress value={0} className="h-2" />
-            </div>
-          )}
+                {/* INFO & TABS (PW Style) */}
+                <div className="px-4 lg:px-0 pb-10">
+                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
+                        <div>
+                            <h1 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">
+                                {currentLesson?.title || "Course Introduction"}
+                            </h1>
+                            <div className="flex items-center gap-4 text-sm text-gray-500">
+                                <span className="flex items-center gap-1"><Clock className="h-4 w-4" /> {currentLesson?.duration || "25m"}</span>
+                                <span className="flex items-center gap-1"><Star className="h-4 w-4 text-yellow-500 fill-yellow-500" /> 4.8 Rating</span>
+                            </div>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" className="gap-2">
+                                <Share2 className="h-4 w-4" /> Share
+                            </Button>
+                        </div>
+                    </div>
 
-          {/* Mobile Playlist Toggle */}
-          <div className="lg:hidden">
-            <h3 className="text-lg font-semibold mb-4">All Lessons</h3>
-            <LessonList
-              lessons={lessons}
-              currentLesson={currentLesson}
-              hasPurchased={hasPurchased}
-              onLessonClick={handleLessonClick}
-            />
-          </div>
+                    {/* TABS COMPONENT */}
+                    <Tabs defaultValue="overview" className="w-full">
+                        <TabsList className="grid w-full grid-cols-3 lg:w-[400px] mb-6">
+                            <TabsTrigger value="overview">Overview</TabsTrigger>
+                            <TabsTrigger value="notes">Notes & PDF</TabsTrigger>
+                            <TabsTrigger value="doubts">Q&A</TabsTrigger>
+                        </TabsList>
+                        
+                        <TabsContent value="overview" className="bg-white p-6 rounded-xl border shadow-sm">
+                            <h3 className="font-semibold text-lg mb-3">About this lesson</h3>
+                            <p className="text-gray-600 leading-relaxed">
+                                {currentLesson?.description || "In this lesson, we will cover the fundamental concepts needed to master this topic. Make sure to watch the full video and take notes."}
+                            </p>
+                            <div className="mt-6 flex items-center gap-3 p-4 bg-blue-50 text-blue-800 rounded-lg border border-blue-100">
+                                <CheckCircle className="h-5 w-5" />
+                                <div className="text-sm font-medium">You will learn: Basic definitions, Real-world examples, and Problem solving.</div>
+                            </div>
+                        </TabsContent>
+                        
+                        <TabsContent value="notes" className="bg-white p-10 rounded-xl border shadow-sm text-center">
+                            <div className="flex flex-col items-center gap-3">
+                                <FileText className="h-12 w-12 text-gray-300" />
+                                <h3 className="font-medium text-gray-900">No Notes Available</h3>
+                                <p className="text-sm text-gray-500">The instructor hasn't uploaded notes for this lesson yet.</p>
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="doubts" className="bg-white p-10 rounded-xl border shadow-sm text-center">
+                            <div className="flex flex-col items-center gap-3">
+                                <MessageCircle className="h-12 w-12 text-gray-300" />
+                                <h3 className="font-medium text-gray-900">Have a doubt?</h3>
+                                <p className="text-sm text-gray-500 mb-4">Post your question and get answers from instructors and peers.</p>
+                                <Button variant="outline">Ask a Question</Button>
+                            </div>
+                        </TabsContent>
+                    </Tabs>
+                </div>
+            </div>
         </main>
 
-        {/* Sidebar - Desktop Playlist */}
-        <aside className="hidden lg:block w-96 border-l bg-card h-[calc(100vh-60px)] sticky top-[60px]">
-          <div className="flex flex-col h-full">
-            <div className="p-4 border-b">
-              <h3 className="font-semibold">Course Content</h3>
-              <p className="text-sm text-muted-foreground">
-                {lessons.length} lessons
-              </p>
+        {/* --- RIGHT: SIDEBAR PLAYLIST (Udemy Style) --- */}
+        <aside className="w-full lg:w-96 bg-white border-l flex flex-col h-[50vh] lg:h-auto">
+            <div className="p-4 border-b bg-gray-50/50">
+                <h3 className="font-bold text-gray-800 mb-2">Course Content</h3>
+                <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                    <span>{progressPercentage}% Completed</span>
+                    <span>{completedLessons}/{lessons.length}</span>
+                </div>
+                <Progress value={progressPercentage} className="h-2 bg-gray-200" />
             </div>
+
             <ScrollArea className="flex-1">
-              <LessonList
-                lessons={lessons}
-                currentLesson={currentLesson}
-                hasPurchased={hasPurchased}
-                onLessonClick={handleLessonClick}
-              />
+                <div className="divide-y divide-gray-100">
+                    {lessons.map((lesson, index) => {
+                        const isActive = currentLesson?.id === lesson.id;
+                        const isLocked = !canAccessLesson(lesson);
+                        
+                        return (
+                            <div 
+                                key={lesson.id}
+                                onClick={() => handleLessonClick(lesson)}
+                                className={cn(
+                                    "flex gap-3 p-4 cursor-pointer hover:bg-gray-50 transition-all border-l-4",
+                                    isActive ? "bg-indigo-50 border-indigo-600" : "border-transparent",
+                                    isLocked && "opacity-60 bg-gray-50/50"
+                                )}
+                            >
+                                <div className="mt-1">
+                                    {isActive ? (
+                                        <div className="h-6 w-6 rounded-full bg-indigo-600 flex items-center justify-center animate-pulse">
+                                            <Play className="h-3 w-3 text-white fill-white" />
+                                        </div>
+                                    ) : isLocked ? (
+                                        <Lock className="h-5 w-5 text-gray-400" />
+                                    ) : (
+                                        <div className="h-6 w-6 rounded-full border-2 border-gray-300 flex items-center justify-center text-xs font-medium text-gray-500">
+                                            {index + 1}
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <div className="flex-1">
+                                    <h4 className={cn("text-sm font-medium mb-1", isActive ? "text-indigo-700" : "text-gray-700")}>
+                                        {lesson.title}
+                                    </h4>
+                                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                                        <span className="flex items-center gap-1">
+                                            <Clock className="h-3 w-3" /> {lesson.duration || "15m"}
+                                        </span>
+                                        {lesson.is_free && !hasPurchased && (
+                                            <Badge variant="secondary" className="text-[10px] h-5 px-1 bg-green-100 text-green-700 border-green-200">
+                                                FREE
+                                            </Badge>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </ScrollArea>
-          </div>
         </aside>
+
       </div>
-    </div>
-  );
-};
-
-// Sub-component for List
-interface LessonListProps {
-  lessons: Lesson[];
-  currentLesson: Lesson | null;
-  hasPurchased: boolean;
-  onLessonClick: (lesson: Lesson) => void;
-}
-
-const LessonList = ({ lessons, currentLesson, hasPurchased, onLessonClick }: LessonListProps) => {
-  return (
-    <div className="divide-y">
-      {lessons.length === 0 && (
-         <div className="p-4 text-center text-sm text-muted-foreground">
-           No lessons added yet.
-         </div>
-      )}
-      
-      {lessons.map((lesson) => {
-        const isActive = currentLesson?.id === lesson.id;
-        const canAccess = lesson.is_free || hasPurchased;
-
-        return (
-          <button
-            key={lesson.id}
-            onClick={() => onLessonClick(lesson)}
-            className={cn(
-              "w-full flex items-center gap-3 p-4 text-left transition-colors",
-              isActive ? "bg-primary/10" : "hover:bg-muted",
-              !canAccess && "opacity-70"
-            )}
-          >
-            {/* Icon */}
-            <div
-              className={cn(
-                "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : !canAccess
-                  ? "bg-muted text-muted-foreground"
-                  : "bg-primary/10 text-primary"
-              )}
-            >
-              {!canAccess ? (
-                <Lock className="h-3 w-3" />
-              ) : (
-                <Play className="h-3 w-3" />
-              )}
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 min-w-0">
-              <p
-                className={cn(
-                  "font-medium truncate text-sm",
-                  isActive ? "text-primary" : "text-foreground"
-                )}
-              >
-                {lesson.title}
-              </p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  {lesson.duration || "10m"}
-                </span>
-                {lesson.is_free && (
-                  <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
-                    FREE
-                  </Badge>
-                )}
-              </div>
-            </div>
-
-            {isActive && <div className="w-1 h-8 bg-primary rounded-full absolute left-0" />}
-          </button>
-        );
-      })}
     </div>
   );
 };
