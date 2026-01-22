@@ -1,25 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/supabaseClient"; 
 import { useRouter } from "next/navigation";
 
 export default function UploadPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [courses, setCourses] = useState<any[]>([]);
   
   // State for Text Data
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     video_url: "",
+    course_id: "", // NEW: Add course_id
   });
 
   // State for File
   const [pdfFile, setPdfFile] = useState<File | null>(null);
 
+  // Fetch courses on component mount
+  useEffect(() => {
+    fetchCourses();
+  }, []);
+
+  const fetchCourses = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("courses")
+        .select("id, name")
+        .order("name");
+      
+      if (error) throw error;
+      setCourses(data || []);
+    } catch (error) {
+      console.error("Error fetching courses:", error);
+    }
+  };
+
   // Input change handler
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
@@ -33,6 +54,13 @@ export default function UploadPage() {
   // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validation: Check if course_id is selected
+    if (!formData.course_id) {
+      alert("❌ Please select a course!");
+      return;
+    }
+    
     setLoading(true);
 
     try {
@@ -44,9 +72,10 @@ export default function UploadPage() {
             title: formData.title,
             description: formData.description,
             video_url: formData.video_url,
+            course_id: formData.course_id, // ADD THIS LINE
           },
         ])
-        .select() // ID wapas paane ke liye .select() zaroori hai
+        .select()
         .single();
 
       if (lessonError) throw lessonError;
@@ -56,12 +85,11 @@ export default function UploadPage() {
 
       // 2. Agar PDF file select ki gayi hai, to use upload karein
       if (pdfFile) {
-        // Unique filename banayein taaki overwrite na ho
         const fileName = `${Date.now()}_${pdfFile.name.replace(/\s/g, "_")}`; 
         
         // A. Storage Bucket me Upload karein
         const { error: uploadError } = await supabase.storage
-          .from("course_materials") // Dhyan rahe: Bucket ka naam same hona chahiye
+          .from("course_materials")
           .upload(fileName, pdfFile);
 
         if (uploadError) throw uploadError;
@@ -79,7 +107,7 @@ export default function UploadPage() {
           .insert([
             {
               lesson_id: newLessonId,
-              title: pdfFile.name, // PDF ka naam hi note ka title ban jayega
+              title: pdfFile.name,
               pdf_url: publicPdfUrl,
             },
           ]);
@@ -90,7 +118,12 @@ export default function UploadPage() {
       alert("✅ Class and Notes Uploaded Successfully!");
       
       // Form Reset
-      setFormData({ title: "", description: "", video_url: "" });
+      setFormData({ 
+        title: "", 
+        description: "", 
+        video_url: "", 
+        course_id: "" 
+      });
       setPdfFile(null);
 
     } catch (error: any) {
@@ -107,6 +140,27 @@ export default function UploadPage() {
       
       <form onSubmit={handleSubmit} className="space-y-5">
         
+        {/* NEW: Course Selection Dropdown */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Select Course *
+          </label>
+          <select
+            name="course_id"
+            value={formData.course_id}
+            onChange={handleChange}
+            className="w-full p-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+            required
+          >
+            <option value="">-- Select a Course --</option>
+            {courses.map((course) => (
+              <option key={course.id} value={course.id}>
+                {course.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Title */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Class Title</label>
