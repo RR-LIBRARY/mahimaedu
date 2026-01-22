@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../supabaseClient"; 
 
 const Courses = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -24,15 +25,32 @@ const Courses = () => {
   const fetchCourses = async () => {
     try {
       setLoading(true);
+      
+      // Supabase se data mangaya
       const { data, error } = await supabase
         .from('courses')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase Error:", error);
+        throw error;
+      }
       
       if (data) {
-        setCourseList(data);
+        // --- DATA SAFETY FIX ---
+        // Ye code ensure karega ki agar image ya grade null bhi ho, to app crash na ho
+        const safeData = data.map((item: any) => ({
+          ...item,
+          // Grade ko hamesha Number banayenge taki filter sahi kaam kare
+          grade: Number(item.grade) || 0,
+          // Image null ho to placeholder laga denge
+          image_url: item.image_url || item.thumbnail_url || "https://placehold.co/600x400/png?text=Course+Image",
+          description: item.description || "No description available",
+          price: Number(item.price) || 0
+        }));
+
+        setCourseList(safeData);
       }
     } catch (error) {
       console.error("Error fetching courses:", error);
@@ -41,13 +59,14 @@ const Courses = () => {
     }
   };
 
-  // 3. Generate Grade Options
+  // 3. Grade Options
   const gradeOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
-  // 4. Filtering Logic
+  // 4. Filtering Logic (UPDATED)
+  // String() lagaya hai taaki "10" (Text) aur 10 (Number) barabar maane jayein
   const filteredCourses = selectedGrade === "all"
     ? courseList
-    : courseList.filter((c) => c.grade === Number(selectedGrade));
+    : courseList.filter((c) => String(c.grade) === String(selectedGrade));
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -68,6 +87,7 @@ const Courses = () => {
       </div>
 
       <main className="flex-1 p-4 space-y-4">
+        
         {/* Filter Section */}
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
@@ -88,17 +108,17 @@ const Courses = () => {
           </Select>
         </div>
 
-        {/* Course Grid - UPDATED SECTION ✅ */}
+        {/* Course Grid */}
         {loading ? (
           <div className="text-center py-12 text-muted-foreground">Loading courses...</div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredCourses.map((course) => (
+              // Yahan check kar rahe hain ki CourseCard component sahi se render ho
               <CourseCard 
                 key={course.id} 
                 course={course}
-                // Ye line add kar di hai. Ab click karne par user '/buy-course' par jayega 👇
-                onClick={() => navigate(`/buy-course?id=${course.id}`)} 
+                onClick={() => navigate(`/buy-course?id=${course.id}`)}
               />
             ))}
           </div>
