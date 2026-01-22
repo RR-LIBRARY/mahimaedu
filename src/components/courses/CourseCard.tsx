@@ -1,132 +1,83 @@
-import { useState, useEffect } from "react";
-import Header from "@/components/Layout/Header";
-import Sidebar from "@/components/Layout/Sidebar";
-// Card Component ko import kiya
-import CourseCard, { CourseProps } from "@/components/courses/CourseCard";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { BookOpen, Clock, Star } from "lucide-react";
 
-// ✅ CORRECT IMPORT PATH: '@' ka matlab 'src' folder hota hai. Ye kabhi fail nahi hoga.
-import { supabase } from "@/supabaseClient"; 
+// ✅ Type Definitions (Safety ke liye)
+export interface CourseProps {
+  id: number;
+  title: string;
+  description: string;
+  price: number;
+  grade: string | number;
+  image_url: string;
+  rating?: number;
+  duration?: string;
+  lessons_count?: number;
+}
 
-const Courses = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [selectedGrade, setSelectedGrade] = useState<string>("all");
-  const navigate = useNavigate();
+interface CourseCardProps {
+  course: CourseProps;
+  onClick?: () => void; // Click handle karne ke liye
+}
 
-  const [courseList, setCourseList] = useState<CourseProps[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchCourses();
-  }, []);
-
-  const fetchCourses = async () => {
-    try {
-      setLoading(true);
-      
-      const { data, error } = await supabase
-        .from('courses')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error("Supabase Error:", error);
-        throw error;
-      }
-      
-      if (data) {
-        // Safe Data Logic (Bina SQL badle app crash hone se bachayega)
-        const safeData = data.map((item: any) => ({
-          ...item,
-          grade: Number(item.grade) || 0,
-          image_url: item.image_url || item.thumbnail_url || "https://placehold.co/600x400/png?text=Course+Image",
-          description: item.description || "No description available",
-          price: Number(item.price) || 0,
-          // Dummy data for UI design
-          rating: 4.8,
-          duration: "12h 00m",
-          lessons_count: 15
-        }));
-        setCourseList(safeData);
-      }
-    } catch (error) {
-      console.error("Error fetching courses:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const gradeOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-
-  // Logic to handle string vs number grade
-  const filteredCourses = selectedGrade === "all"
-    ? courseList
-    : courseList.filter((c) => String(c.grade) === String(selectedGrade));
-
+// ✅ Ye Sirf UI Component hai (Isme Page ka code nahi hona chahiye)
+const CourseCard = ({ course, onClick }: CourseCardProps) => {
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <Header onMenuClick={() => setSidebarOpen(true)} />
-
-      <div className="bg-primary px-4 py-4 flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate(-1)}
-          className="text-primary-foreground hover:bg-primary-foreground/10"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <h1 className="text-lg font-semibold text-primary-foreground">Courses</h1>
+    <Card className="flex flex-col overflow-hidden hover:shadow-lg transition-shadow duration-300 border-border/50">
+      
+      {/* Course Image */}
+      <div className="relative h-48 w-full overflow-hidden bg-muted">
+        <img
+          src={course.image_url || "https://placehold.co/600x400/png?text=No+Image"}
+          alt={course.title}
+          className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
+        />
+        <div className="absolute top-2 right-2">
+          <Badge variant="secondary" className="backdrop-blur-md bg-background/80">
+            Grade {course.grade}
+          </Badge>
+        </div>
       </div>
 
-      <main className="flex-1 p-4 space-y-4">
-        {/* Filter Section */}
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            {loading ? "Loading..." : `${filteredCourses.length} courses available`}
-          </p>
-          <Select value={selectedGrade} onValueChange={setSelectedGrade}>
-            <SelectTrigger className="w-32 bg-card border-border">
-              <SelectValue placeholder="All Grades" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Grades</SelectItem>
-              {gradeOptions.map((grade) => (
-                <SelectItem key={grade} value={String(grade)}>
-                  Grade {grade}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      {/* Card Content */}
+      <CardHeader className="p-4 pb-2">
+        <div className="flex justify-between items-start mb-2">
+          <h3 className="font-bold text-lg line-clamp-1">{course.title}</h3>
+          <div className="flex items-center text-yellow-500 text-xs font-medium">
+            <Star className="h-3 w-3 fill-current mr-1" />
+            <span>{course.rating || "4.5"}</span>
+          </div>
         </div>
+        <p className="text-muted-foreground text-sm line-clamp-2 h-10">
+          {course.description || "No description provided."}
+        </p>
+      </CardHeader>
 
-        {/* Grid Section */}
-        {loading ? (
-          <div className="text-center py-12 text-muted-foreground">Loading courses...</div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredCourses.map((course) => (
-              <CourseCard 
-                key={course.id} 
-                course={course}
-                onClick={() => navigate(`/buy-course?id=${course.id}`)}
-              />
-            ))}
+      <CardContent className="p-4 pt-0 flex-1">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground mt-4">
+          <div className="flex items-center gap-1">
+            <BookOpen className="h-3 w-3" />
+            <span>{course.lessons_count || 12} Lessons</span>
           </div>
-        )}
+          <div className="flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            <span>{course.duration || "10h 30m"}</span>
+          </div>
+        </div>
+      </CardContent>
 
-        {!loading && filteredCourses.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">No courses found for this grade.</p>
-          </div>
-        )}
-      </main>
-    </div>
+      {/* Footer / Button */}
+      <CardFooter className="p-4 border-t bg-muted/20 flex items-center justify-between">
+        <div className="text-lg font-bold text-primary">
+          {course.price === 0 ? "Free" : `₹${course.price}`}
+        </div>
+        <Button size="sm" onClick={onClick}>
+          Enroll Now
+        </Button>
+      </CardFooter>
+    </Card>
   );
 };
 
-export default Courses;
+export default CourseCard;
