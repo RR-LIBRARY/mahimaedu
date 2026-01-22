@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Header from "@/components/Layout/Header";
 import Sidebar from "@/components/Layout/Sidebar";
@@ -10,38 +9,22 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Textarea } from "@/components/ui/textarea"; // Added Textarea for description
+import { Textarea } from "@/components/ui/textarea"; 
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import {
-  Upload,
-  Video,
-  FileText,
-  Users,
-  CreditCard,
-  CheckCircle,
-  XCircle,
-  Clock,
-  BarChart3,
-  Eye,
-  Trash2,
-  Edit,
-  Plus,
-  BookOpen, // Added Icon
+  Upload, Video, FileText, Users, CreditCard, CheckCircle, XCircle, Clock,
+  BarChart3, Trash2, Plus, BookOpen, ExternalLink, ShieldAlert
 } from "lucide-react";
 
 const Admin = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user } = useAuth();
   
-  // -- REAL DATA STATES --
+  // -- DATA STATES --
   const [payments, setPayments] = useState<any[]>([]);
   const [lessons, setLessons] = useState<any[]>([]);
   const [coursesList, setCoursesList] = useState<any[]>([]);
@@ -52,64 +35,54 @@ const Admin = () => {
     activeEnrollments: 0
   });
 
-  // -- NEW COURSE STATE --
+  // -- COURSE CREATION STATE --
   const [newCourse, setNewCourse] = useState({
-    title: "",
-    description: "",
-    price: "",
-    grade: "",
+    title: "", description: "", price: "", grade: "",
   });
   const [isCreatingCourse, setIsCreatingCourse] = useState(false);
 
-  // Upload form state
+  // -- UPLOAD STATE --
   const [uploadType, setUploadType] = useState<"video" | "pdf">("video");
   const [videoUrl, setVideoUrl] = useState("");
   const [videoTitle, setVideoTitle] = useState("");
   const [selectedCourse, setSelectedCourse] = useState("");
   const [watermarkText, setWatermarkText] = useState("Mahima Academy");
 
-  // --- FETCH DATA FROM SUPABASE ---
   useEffect(() => {
     fetchDashboardData();
   }, []);
 
+  // --- 1. FETCH DATA ---
   const fetchDashboardData = async () => {
     try {
-      // 1. Fetch Courses for dropdown & stats
-      const { data: coursesData, error: coursesError } = await supabase
-        .from('courses')
-        .select('*');
+      // A. Fetch Courses
+      const { data: coursesData } = await supabase.from('courses').select('*');
       if (coursesData) setCoursesList(coursesData);
 
-      // 2. Fetch Pending Payments
+      // B. Fetch Pending Payments (With User Profile & Course Details)
+      // Note: Hum profiles table se bhi data le rahe hain taaki email dikhe
       const { data: payData, error: payError } = await supabase
         .from('payment_requests')
         .select(`
           *,
-          courses (title)
+          courses (title),
+          profiles (full_name, email)
         `)
-        .eq('status', 'pending');
-      if (payData) setPayments(payData);
-
-      // 3. Fetch Lessons (Content)
-      const { data: lessonData, error: lessonError } = await supabase
-        .from('lessons')
-        .select(`
-          *,
-          courses (title)
-        `)
+        .eq('status', 'pending')
         .order('created_at', { ascending: false });
+        
+      if (payData) setPayments(payData);
+      if (payError) console.error("Payment Fetch Error:", payError);
+
+      // C. Fetch Lessons
+      const { data: lessonData } = await supabase
+        .from('lessons')
+        .select(`*, courses (title)`).order('created_at', { ascending: false });
       if (lessonData) setLessons(lessonData);
 
-      // 4. Fetch Stats Counts
-      const { count: studentCount } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true })
-        .eq('role', 'student');
-
-      const { count: enrollCount } = await supabase
-        .from('enrollments')
-        .select('*', { count: 'exact', head: true });
+      // D. Stats
+      const { count: studentCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'student');
+      const { count: enrollCount } = await supabase.from('enrollments').select('*', { count: 'exact', head: true });
 
       setStatsData({
         totalStudents: studentCount || 0,
@@ -124,52 +97,12 @@ const Admin = () => {
     }
   };
 
-  // --- LOGIC: CREATE COURSE (NEW FUNCTION) ---
-  const handleCreateCourse = async () => {
-    if (!newCourse.title || !newCourse.price || !newCourse.grade) {
-      toast.error("Please fill Title, Price and Grade");
-      return;
-    }
-
-    try {
-      setIsCreatingCourse(true);
-      const { error } = await supabase.from('courses').insert({
-        title: newCourse.title,
-        description: newCourse.description,
-        price: parseFloat(newCourse.price),
-        grade: newCourse.grade,
-        image_url: "https://placehold.co/600x400/png", // Placeholder image
-      });
-
-      if (error) throw error;
-
-      toast.success("Course Created Successfully!");
-      setNewCourse({ title: "", description: "", price: "", grade: "" }); // Reset form
-      fetchDashboardData(); // Refresh list
-    } catch (error: any) {
-      toast.error("Error creating course: " + error.message);
-    } finally {
-      setIsCreatingCourse(false);
-    }
-  };
-
-  // --- LOGIC: DELETE COURSE ---
-  const handleDeleteCourse = async (id: number) => {
-    if (!confirm("Delete this course? All related lessons will also be deleted!")) return;
-    
-    try {
-      const { error } = await supabase.from('courses').delete().eq('id', id);
-      if (error) throw error;
-      toast.success("Course deleted");
-      fetchDashboardData();
-    } catch (error: any) {
-      toast.error("Delete failed: " + error.message);
-    }
-  };
-
-  // --- LOGIC: APPROVE PAYMENT ---
+  // --- 2. PAYMENT APPROVAL LOGIC (MAIN) ---
   const handleApprovePayment = async (paymentRequest: any) => {
+    if(!confirm(`Approve payment of ₹${paymentRequest.amount} for ${paymentRequest.sender_name}?`)) return;
+
     try {
+      // Step A: Update Payment Status
       const { error: updateError } = await supabase
         .from('payment_requests')
         .update({ status: 'approved' })
@@ -177,25 +110,37 @@ const Admin = () => {
 
       if (updateError) throw updateError;
 
-      const { error: enrollError } = await supabase
+      // Step B: Check if already enrolled (to avoid duplicates)
+      const { data: existingEnroll } = await supabase
         .from('enrollments')
-        .insert({
-          user_id: paymentRequest.user_id,
-          course_id: paymentRequest.course_id
-        });
+        .select('*')
+        .eq('user_id', paymentRequest.user_id)
+        .eq('course_id', paymentRequest.course_id)
+        .single();
 
-      if (enrollError) throw enrollError;
+      // Step C: Enroll Student if not already enrolled
+      if (!existingEnroll) {
+        const { error: enrollError } = await supabase
+          .from('enrollments')
+          .insert({
+            user_id: paymentRequest.user_id,
+            course_id: paymentRequest.course_id
+          });
+        if (enrollError) throw enrollError;
+      }
 
-      toast.success("Payment approved & Student enrolled!");
-      fetchDashboardData();
+      toast.success("Payment Approved & Course Unlocked!");
+      fetchDashboardData(); // Refresh list
 
     } catch (error: any) {
-      toast.error("Error approving payment: " + error.message);
+      toast.error("Approval Error: " + error.message);
     }
   };
 
-  // --- LOGIC: REJECT PAYMENT ---
+  // --- 3. PAYMENT REJECTION LOGIC ---
   const handleRejectPayment = async (paymentId: number) => {
+    if(!confirm("Are you sure you want to REJECT this payment?")) return;
+    
     try {
       const { error } = await supabase
         .from('payment_requests')
@@ -203,360 +148,330 @@ const Admin = () => {
         .eq('id', paymentId);
 
       if (error) throw error;
-      toast.error("Payment rejected.");
+      toast.error("Payment request rejected.");
       fetchDashboardData();
     } catch (error: any) {
       toast.error("Error rejecting: " + error.message);
     }
   };
 
-  // --- LOGIC: UPLOAD VIDEO/LESSON ---
-  const handleVideoUpload = async () => {
-    if (!videoTitle || !selectedCourse) {
-      toast.error("Please fill title and select a course");
-      return;
-    }
-    if (uploadType === "video" && !videoUrl) {
-      toast.error("Video URL is required");
-      return;
-    }
-
+  // --- 4. COURSE MANAGEMENT ---
+  const handleCreateCourse = async () => {
+    if (!newCourse.title || !newCourse.price || !newCourse.grade) return toast.error("Fill all fields");
     try {
-      const { error } = await supabase
-        .from('lessons')
-        .insert({
-          course_id: parseInt(selectedCourse),
-          title: videoTitle,
-          type: uploadType,
-          video_url: uploadType === "video" ? videoUrl : null,
-          pdf_url: uploadType === "pdf" ? "dummy_pdf_link" : null,
-          watermark_text: watermarkText,
-          is_locked: true 
-        });
-
+      setIsCreatingCourse(true);
+      const { error } = await supabase.from('courses').insert({
+        title: newCourse.title,
+        description: newCourse.description,
+        price: parseFloat(newCourse.price),
+        grade: newCourse.grade,
+        image_url: "https://placehold.co/600x400/png",
+      });
       if (error) throw error;
-      toast.success(`${uploadType === 'video' ? 'Video' : 'PDF'} added successfully!`);
-      
-      setVideoUrl("");
-      setVideoTitle("");
-      setSelectedCourse("");
+      toast.success("Course Created!");
+      setNewCourse({ title: "", description: "", price: "", grade: "" });
       fetchDashboardData();
-
     } catch (error: any) {
-      toast.error("Upload failed: " + error.message);
+      toast.error(error.message);
+    } finally {
+      setIsCreatingCourse(false);
     }
   };
 
-  // --- LOGIC: DELETE LESSON ---
-  const handleDeleteLesson = async (id: number) => {
-    if(!confirm("Are you sure you want to delete this lesson?")) return;
-    const { error } = await supabase.from('lessons').delete().eq('id', id);
-    if(error) toast.error("Failed to delete");
-    else {
-      toast.success("Lesson deleted");
-      fetchDashboardData();
-    }
-  }
+  const handleDeleteCourse = async (id: number) => {
+    if (!confirm("Delete course? This will remove all lessons too!")) return;
+    const { error } = await supabase.from('courses').delete().eq('id', id);
+    if (error) toast.error(error.message);
+    else { toast.success("Course deleted"); fetchDashboardData(); }
+  };
 
-  // Stats Array for UI
+  // --- 5. CONTENT UPLOAD ---
+  const handleVideoUpload = async () => {
+    if (!videoTitle || !selectedCourse) return toast.error("Fill details");
+    try {
+      const { error } = await supabase.from('lessons').insert({
+        course_id: parseInt(selectedCourse),
+        title: videoTitle,
+        type: uploadType,
+        video_url: uploadType === "video" ? videoUrl : null,
+        pdf_url: uploadType === "pdf" ? "dummy_pdf_link" : null, // Replace with real logic later
+        watermark_text: watermarkText,
+        is_locked: true 
+      });
+      if (error) throw error;
+      toast.success("Content Added!");
+      setVideoTitle(""); setVideoUrl(""); setSelectedCourse("");
+      fetchDashboardData();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleDeleteLesson = async (id: number) => {
+    if(!confirm("Delete lesson?")) return;
+    const { error } = await supabase.from('lessons').delete().eq('id', id);
+    if(!error) { toast.success("Deleted"); fetchDashboardData(); }
+  };
+
+  // Stats UI Config
   const stats = [
-    { label: "Total Students", value: statsData.totalStudents, icon: Users, color: "text-primary" },
-    { label: "Total Courses", value: statsData.totalCourses, icon: BarChart3, color: "text-success" },
-    { label: "Pending Payments", value: statsData.pendingPayments, icon: Clock, color: "text-accent" },
-    { label: "Active Enrollments", value: statsData.activeEnrollments, icon: CreditCard, color: "text-secondary" },
+    { label: "Total Students", value: statsData.totalStudents, icon: Users, color: "text-blue-600 bg-blue-100" },
+    { label: "Total Courses", value: statsData.totalCourses, icon: BookOpen, color: "text-green-600 bg-green-100" },
+    { label: "Pending Payments", value: statsData.pendingPayments, icon: Clock, color: "text-orange-600 bg-orange-100" },
+    { label: "Active Enrollments", value: statsData.activeEnrollments, icon: CheckCircle, color: "text-purple-600 bg-purple-100" },
   ];
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <Header onMenuClick={() => setSidebarOpen(true)} userName={user?.name || "Admin"} />
 
-      <main className="flex-1 overflow-y-auto pb-6">
-        {/* Header */}
-        <section className="px-5 py-6">
-          <h1 className="text-2xl font-bold text-foreground">Admin Panel</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Manage courses, payments, and content (Live Database)
-          </p>
-        </section>
+      <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+        
+        {/* Title */}
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+          <p className="text-gray-500">Manage your academy operations securely.</p>
+        </div>
 
         {/* Stats Grid */}
-        <section className="px-5 mb-6">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {stats.map((stat) => (
-              <Card key={stat.label}>
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className={`p-2 rounded-lg bg-muted ${stat.color}`}>
-                    <stat.icon className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{stat.value}</p>
-                    <p className="text-xs text-muted-foreground">{stat.label}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {stats.map((stat) => (
+            <Card key={stat.label} className="border-none shadow-sm">
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className={`p-3 rounded-xl ${stat.color}`}>
+                  <stat.icon className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                  <p className="text-sm text-gray-500 font-medium">{stat.label}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
 
-        {/* Main Tabs */}
-        <section className="px-5">
-          <Tabs defaultValue="courses" className="w-full">
-            <TabsList className="w-full grid grid-cols-4 mb-6">
-              <TabsTrigger value="payments">Payments ({payments.length})</TabsTrigger>
-              <TabsTrigger value="courses">Courses</TabsTrigger>
-              <TabsTrigger value="content">Content</TabsTrigger>
-              <TabsTrigger value="upload">Upload</TabsTrigger>
-            </TabsList>
+        {/* TABS SECTION */}
+        <Tabs defaultValue="payments" className="w-full space-y-6">
+          <TabsList className="bg-white p-1 border rounded-lg w-full md:w-auto grid grid-cols-4 h-auto">
+            <TabsTrigger value="payments" className="py-2">Payments <Badge variant="destructive" className="ml-2">{payments.length}</Badge></TabsTrigger>
+            <TabsTrigger value="courses" className="py-2">Courses</TabsTrigger>
+            <TabsTrigger value="content" className="py-2">Content</TabsTrigger>
+            <TabsTrigger value="upload" className="py-2">Upload</TabsTrigger>
+          </TabsList>
 
-            {/* Payments Tab */}
-            <TabsContent value="payments">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <CreditCard className="h-5 w-5" />
-                    Pending Payment Verifications
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[400px]">
-                    {payments.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-10">No pending payments.</p>
-                    ) : (
-                      <div className="space-y-4">
-                        {payments.map((payment) => (
-                          <div key={payment.id} className="flex flex-col sm:flex-row justify-between gap-4 p-4 border rounded-lg">
-                            <div>
-                              <p className="font-medium">{payment.user_name || "Unknown User"}</p>
-                              <p className="text-sm">Course: <strong>{payment.courses?.title}</strong></p>
-                              <p className="text-xs text-muted-foreground">Amount: ₹{payment.amount}</p>
+          {/* --- TAB 1: PAYMENTS (UPDATED) --- */}
+          <TabsContent value="payments">
+            <Card className="border shadow-sm">
+              <CardHeader className="bg-orange-50/50 border-b pb-4">
+                <CardTitle className="flex items-center gap-2 text-orange-700">
+                  <ShieldAlert className="h-5 w-5" />
+                  Verification Requests
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ScrollArea className="h-[500px]">
+                  {payments.length === 0 ? (
+                    <div className="text-center py-12">
+                      <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-3 opacity-20" />
+                      <p className="text-muted-foreground">No pending payment requests.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y">
+                      {payments.map((req) => (
+                        <div key={req.id} className="p-4 md:p-6 hover:bg-gray-50 transition-colors flex flex-col md:flex-row gap-6">
+                          
+                          {/* Left: Info */}
+                          <div className="flex-1 space-y-2">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h3 className="font-bold text-lg text-gray-900">{req.courses?.title || "Unknown Course"}</h3>
+                                <p className="text-sm text-gray-500">
+                                  App User: <span className="font-medium text-gray-700">{req.profiles?.full_name || "N/A"}</span> ({req.profiles?.email})
+                                </p>
+                              </div>
+                              <Badge variant="outline" className="text-lg px-3 py-1 bg-green-50 text-green-700 border-green-200">
+                                ₹{req.amount}
+                              </Badge>
                             </div>
-                            <div className="flex gap-2">
-                              <Button size="sm" variant="outline" className="text-success" onClick={() => handleApprovePayment(payment)}>Approve</Button>
-                              <Button size="sm" variant="outline" className="text-destructive" onClick={() => handleRejectPayment(payment.id)}>Reject</Button>
+
+                            <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-sm space-y-1">
+                              <p className="flex justify-between">
+                                <span className="text-blue-600 font-medium">Bank Sender Name:</span>
+                                <span className="font-bold text-gray-800">{req.sender_name || "Not Provided"}</span>
+                              </p>
+                              <p className="flex justify-between">
+                                <span className="text-blue-600 font-medium">UTR / Ref No:</span>
+                                <span className="font-mono font-bold text-gray-800">{req.transaction_id}</span>
+                              </p>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </TabsContent>
 
-            {/* --- NEW COURSES TAB --- */}
-            <TabsContent value="courses">
-              <div className="grid md:grid-cols-2 gap-6">
-                {/* Left: Create Course Form */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Plus className="h-5 w-5" />
-                      Create New Course
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Course Title</Label>
-                      <Input 
-                        placeholder="e.g. Class 10th Mathematics" 
-                        value={newCourse.title}
-                        onChange={(e) => setNewCourse({...newCourse, title: e.target.value})}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Description</Label>
-                      <Textarea 
-                        placeholder="Short details about the course..." 
-                        value={newCourse.description}
-                        onChange={(e) => setNewCourse({...newCourse, description: e.target.value})}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Price (₹)</Label>
-                        <Input 
-                          type="number" 
-                          placeholder="999" 
-                          value={newCourse.price}
-                          onChange={(e) => setNewCourse({...newCourse, price: e.target.value})}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Grade/Class</Label>
-                        <Input 
-                          placeholder="e.g. 10" 
-                          value={newCourse.grade}
-                          onChange={(e) => setNewCourse({...newCourse, grade: e.target.value})}
-                        />
-                      </div>
-                    </div>
-                    <Button 
-                      className="w-full" 
-                      onClick={handleCreateCourse} 
-                      disabled={isCreatingCourse}
-                    >
-                      {isCreatingCourse ? "Creating..." : "Create Course"}
-                    </Button>
-                  </CardContent>
-                </Card>
+                          {/* Right: Actions & Proof */}
+                          <div className="flex flex-col gap-3 min-w-[200px]">
+                             {/* Screenshot Button */}
+                             {req.screenshot_url ? (
+                               <a 
+                                 href={req.screenshot_url} 
+                                 target="_blank" 
+                                 rel="noopener noreferrer"
+                                 className="w-full"
+                               >
+                                 <Button variant="outline" className="w-full border-dashed border-gray-400 text-gray-600 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300">
+                                   <ExternalLink className="h-4 w-4 mr-2" /> View Screenshot
+                                 </Button>
+                               </a>
+                             ) : (
+                               <div className="text-xs text-red-500 text-center py-2 bg-red-50 rounded">No Screenshot</div>
+                             )}
 
-                {/* Right: Existing Courses List */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BookOpen className="h-5 w-5" />
-                      Existing Courses
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ScrollArea className="h-[350px]">
-                      {coursesList.length === 0 ? (
-                        <p className="text-center text-muted-foreground py-10">No courses created yet.</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {coursesList.map((course) => (
-                            <div key={course.id} className="flex justify-between items-center p-3 border rounded-lg bg-card/50">
-                              <div>
-                                <p className="font-semibold">{course.title}</p>
-                                <p className="text-xs text-muted-foreground">Class {course.grade} • ₹{course.price}</p>
-                              </div>
-                              <Button 
-                                size="icon" 
-                                variant="ghost" 
-                                className="text-destructive"
-                                onClick={() => handleDeleteCourse(course.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
+                             <div className="flex gap-2 mt-auto">
+                               <Button 
+                                 className="flex-1 bg-green-600 hover:bg-green-700 text-white" 
+                                 onClick={() => handleApprovePayment(req)}
+                               >
+                                 Approve
+                               </Button>
+                               <Button 
+                                 variant="destructive" 
+                                 className="flex-1" 
+                                 onClick={() => handleRejectPayment(req.id)}
+                               >
+                                 Reject
+                               </Button>
+                             </div>
+                          </div>
+
                         </div>
-                      )}
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-            {/* Content Tab */}
-            <TabsContent value="content">
+          {/* --- TAB 2: COURSES --- */}
+          <TabsContent value="courses">
+            <div className="grid md:grid-cols-2 gap-6">
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Video className="h-5 w-5" />
-                    Uploaded Content
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[400px]">
-                    {lessons.length === 0 ? (
-                      <p className="text-center text-muted-foreground py-10">No lessons uploaded yet.</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {lessons.map((content) => (
-                          <div key={content.id} className="flex items-center justify-between p-4 border rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <div className={`p-2 rounded-lg ${content.type === "video" ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}>
-                                {content.type === "video" ? <Video className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
-                              </div>
-                              <div>
-                                <p className="font-medium">{content.title}</p>
-                                <p className="text-xs text-muted-foreground">{content.courses?.title}</p>
-                              </div>
-                            </div>
-                            <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleDeleteLesson(content.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Upload Tab */}
-            <TabsContent value="upload">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Upload className="h-5 w-5" />
-                    Add New Content
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* ... Same Upload Form ... */}
-                  <div className="flex gap-4">
-                    <Button variant={uploadType === "video" ? "default" : "outline"} onClick={() => setUploadType("video")} className="flex-1">
-                      <Video className="h-4 w-4 mr-2" /> Video Lesson
-                    </Button>
-                    <Button variant={uploadType === "pdf" ? "default" : "outline"} onClick={() => setUploadType("pdf")} className="flex-1">
-                      <FileText className="h-4 w-4 mr-2" /> PDF Material
-                    </Button>
+                <CardHeader><CardTitle>Create Course</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Title</Label>
+                    <Input value={newCourse.title} onChange={(e) => setNewCourse({...newCourse, title: e.target.value})} placeholder="Class 10 Science" />
                   </div>
-
-                  {uploadType === "video" && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>YouTube Video URL (Unlisted)</Label>
-                        <Input placeholder="https://youtube.com/watch?v=..." value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Lesson Title</Label>
-                        <Input placeholder="e.g., Chapter 1: Introduction" value={videoTitle} onChange={(e) => setVideoTitle(e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Select Course</Label>
-                        <Select value={selectedCourse} onValueChange={setSelectedCourse}>
-                          <SelectTrigger><SelectValue placeholder="Choose course" /></SelectTrigger>
-                          <SelectContent>
-                            {coursesList.map((course) => (
-                              <SelectItem key={course.id} value={course.id.toString()}>{course.title}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Watermark Text</Label>
-                        <Input placeholder="Mahima Academy" value={watermarkText} onChange={(e) => setWatermarkText(e.target.value)} />
-                      </div>
-                    </>
-                  )}
-
-                   {/* PDF Form Part */}
-                   {uploadType === "pdf" && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>PDF Title</Label>
-                        <Input placeholder="e.g., Math Worksheet" value={videoTitle} onChange={(e) => setVideoTitle(e.target.value)} />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Select Course</Label>
-                        <Select value={selectedCourse} onValueChange={setSelectedCourse}>
-                          <SelectTrigger><SelectValue placeholder="Choose course" /></SelectTrigger>
-                          <SelectContent>
-                            {coursesList.map((course) => (
-                              <SelectItem key={course.id} value={course.id.toString()}>{course.title}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="border-2 border-dashed rounded-lg p-8 text-center text-muted-foreground">
-                        <p>File Upload Pending Storage Setup.</p>
-                      </div>
-                    </>
-                  )}
-
-                  <Button className="w-full" onClick={handleVideoUpload}>
-                    <Plus className="h-4 w-4 mr-2" /> Add Content
+                  <div className="space-y-2">
+                    <Label>Description</Label>
+                    <Textarea value={newCourse.description} onChange={(e) => setNewCourse({...newCourse, description: e.target.value})} placeholder="Details..." />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Price (₹)</Label>
+                      <Input type="number" value={newCourse.price} onChange={(e) => setNewCourse({...newCourse, price: e.target.value})} placeholder="499" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Grade</Label>
+                      <Input value={newCourse.grade} onChange={(e) => setNewCourse({...newCourse, grade: e.target.value})} placeholder="10" />
+                    </div>
+                  </div>
+                  <Button className="w-full" onClick={handleCreateCourse} disabled={isCreatingCourse}>
+                    {isCreatingCourse ? <Clock className="animate-spin mr-2"/> : <Plus className="mr-2 h-4 w-4"/>} Create Course
                   </Button>
                 </CardContent>
               </Card>
-            </TabsContent>
-          </Tabs>
-        </section>
+
+              <Card>
+                <CardHeader><CardTitle>Course List</CardTitle></CardHeader>
+                <CardContent>
+                  <ScrollArea className="h-[400px]">
+                    <div className="space-y-3">
+                      {coursesList.map((c) => (
+                        <div key={c.id} className="flex justify-between items-center p-3 border rounded-lg bg-white">
+                          <div>
+                            <p className="font-semibold">{c.title}</p>
+                            <p className="text-xs text-muted-foreground">₹{c.price} • Grade {c.grade}</p>
+                          </div>
+                          <Button size="icon" variant="ghost" className="text-red-500 hover:bg-red-50" onClick={() => handleDeleteCourse(c.id)}>
+                            <Trash2 className="h-4 w-4"/>
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* --- TAB 3: CONTENT --- */}
+          <TabsContent value="content">
+            <Card>
+              <CardHeader><CardTitle>Manage Lessons</CardTitle></CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[500px]">
+                  {lessons.length === 0 ? <p className="text-center text-gray-400 py-10">No content yet.</p> : (
+                    <div className="space-y-2">
+                      {lessons.map((l) => (
+                        <div key={l.id} className="flex items-center justify-between p-3 border rounded bg-white">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded ${l.type === 'video' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'}`}>
+                              {l.type === 'video' ? <Video className="h-4 w-4"/> : <FileText className="h-4 w-4"/>}
+                            </div>
+                            <div>
+                              <p className="font-medium text-sm">{l.title}</p>
+                              <p className="text-xs text-gray-500">{l.courses?.title}</p>
+                            </div>
+                          </div>
+                          <Button size="icon" variant="ghost" className="text-red-400 hover:text-red-600" onClick={() => handleDeleteLesson(l.id)}>
+                            <Trash2 className="h-4 w-4"/>
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* --- TAB 4: UPLOAD --- */}
+          <TabsContent value="upload">
+            <Card>
+              <CardHeader><CardTitle>Upload New Material</CardTitle></CardHeader>
+              <CardContent className="space-y-5">
+                <div className="flex gap-4">
+                  <Button variant={uploadType==="video"?"default":"outline"} onClick={()=>setUploadType("video")} className="flex-1">Video</Button>
+                  <Button variant={uploadType==="pdf"?"default":"outline"} onClick={()=>setUploadType("pdf")} className="flex-1">PDF</Button>
+                </div>
+                
+                {uploadType === "video" ? (
+                  <>
+                    <div className="space-y-2"><Label>Video URL</Label><Input value={videoUrl} onChange={(e)=>setVideoUrl(e.target.value)} placeholder="https://youtube.com/..." /></div>
+                    <div className="space-y-2"><Label>Title</Label><Input value={videoTitle} onChange={(e)=>setVideoTitle(e.target.value)} placeholder="Chapter Title" /></div>
+                  </>
+                ) : (
+                  <div className="p-8 border-2 border-dashed rounded text-center text-gray-500">
+                    <p>PDF Upload Feature Coming Soon</p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Select Course</Label>
+                  <Select value={selectedCourse} onValueChange={setSelectedCourse}>
+                    <SelectTrigger><SelectValue placeholder="Select Course" /></SelectTrigger>
+                    <SelectContent>
+                      {coursesList.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.title}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Button className="w-full" onClick={handleVideoUpload}><Upload className="mr-2 h-4 w-4"/> Publish Content</Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+        </Tabs>
       </main>
     </div>
   );
