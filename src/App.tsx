@@ -34,11 +34,16 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/courses" element={<Courses />} />
             <Route path="/courses/:courseId/learn" element={<LessonView />} />
+            
+            {/* FIXED: Ye dono routes add kar diye taaki 404 error na aaye */}
             <Route path="/courses/:courseId/buy" element={<BuyCourse />} />
+            <Route path="/buy-course" element={<BuyCourse />} />
+
             <Route path="/attendance" element={<Attendance />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/students" element={<Students />} />
             <Route path="/profile" element={<Profile />} />
+            
             {/* Placeholder routes */}
             <Route path="/reports" element={<Dashboard />} />
             <Route path="/messages" element={<Dashboard />} />
@@ -47,6 +52,7 @@ const App = () => (
             <Route path="/notices" element={<Dashboard />} />
             <Route path="/syllabus" element={<Dashboard />} />
             <Route path="/materials" element={<Dashboard />} />
+            
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
           </Routes>
