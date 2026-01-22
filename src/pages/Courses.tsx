@@ -46,10 +46,11 @@ const Courses = () => {
   // 3. Generate Grade Options (1 to 12)
   const gradeOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
-  // 4. Filtering Logic on Real Data
+  // 4. Filtering Logic on Real Data (FIXED HERE)
   const filteredCourses = selectedGrade === "all"
     ? courseList
-    : courseList.filter((c) => c.grade === Number(selectedGrade));
+    : courseList.filter((c) => String(c.grade) === String(selectedGrade));
+    // Maine yaha dono taraf String() laga diya hai taki "10" aur 10 barabar mane jaye.
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
