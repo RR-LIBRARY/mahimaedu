@@ -1,44 +1,36 @@
 import { useState, useEffect } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom"; // Updated imports
+import { useSearchParams, useNavigate, useLocation } from "react-router-dom"; 
 import { supabase } from "../supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/AuthContext"; // Ensure this path is correct
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import {
-  ArrowLeft,
-  CheckCircle,
-  Clock,
-  BookOpen,
-  Shield,
-  Copy,
-  Upload,
-  Loader2,
+  ArrowLeft, CheckCircle, Clock, BookOpen, Shield, Copy, Upload, Loader2, Smartphone
 } from "lucide-react";
 
-// UPI Payment details
-const UPI_ID = "mahimaacademy@upi";
+// --- CONFIGURATION FROM YOUR HTML ---
+const MERCHANT_UPI = "mandharilalyadav101174-2@okaxis"; 
+const MERCHANT_NAME = "Mahima Academy";
 
 const BuyCourse = () => {
-  // 1. URL se ID read karne ka sahi tarika
   const [searchParams] = useSearchParams();
   const courseId = searchParams.get("id");
+  
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuthenticated } = useAuth();
   
-  // States
   const [step, setStep] = useState<"details" | "payment" | "verify">("details");
   const [transactionId, setTransactionId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Course Data State
   const [course, setCourse] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // 2. Fetch Course Data from Supabase
+  // 1. Fetch Course
   useEffect(() => {
     const fetchCourseDetails = async () => {
       if (!courseId) return;
@@ -48,7 +40,7 @@ const BuyCourse = () => {
           .from('courses')
           .select('*')
           .eq('id', courseId)
-          .single(); // .single() kyunki hume ek hi course chahiye
+          .single();
 
         if (error) throw error;
         setCourse(data);
@@ -59,31 +51,53 @@ const BuyCourse = () => {
         setLoading(false);
       }
     };
-
     fetchCourseDetails();
   }, [courseId]);
 
+  // 2. Dynamic UPI Links (Logic from HTML)
+  const getUPILink = (appMode?: string) => {
+    const base = `pa=${MERCHANT_UPI}&pn=${encodeURIComponent(MERCHANT_NAME)}&am=${course?.price || '0'}&tn=Course-${courseId}&cu=INR`;
+    
+    if (appMode === 'gpay') return `tez://upi/pay?${base}`;
+    if (appMode === 'phonepe') return `phonepe://upi/pay?${base}`;
+    if (appMode === 'paytm') return `paytmmp://upi/pay?${base}`;
+    if (appMode === 'bhim') return `bhim://upi/pay?${base}`;
+    
+    return `upi://pay?${base}`; // Default generic
+  };
+
+  // QR Code URL (API based on HTML logic)
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(getUPILink())}`;
+
+  // 3. Handlers
   const handleCopyUPI = () => {
-    navigator.clipboard.writeText(UPI_ID);
-    toast.success("UPI ID copied!");
+    navigator.clipboard.writeText(MERCHANT_UPI);
+    toast.success("UPI ID copied to clipboard!");
+  };
+
+  const openApp = (app: string) => {
+    window.location.href = getUPILink(app);
+  };
+
+  const handleProceed = () => {
+    if (!isAuthenticated) {
+      toast.error("Please login first to continue purchase");
+      // Redirect to Login, keeping current location in state
+      navigate("/login", { state: { from: location.pathname + location.search } });
+      return;
+    }
+    setStep("payment");
   };
 
   const handlePaymentSubmit = async () => {
-    if (!transactionId.trim()) {
-      toast.error("Please enter your UPI Transaction ID");
-      return;
-    }
-
-    if (!isAuthenticated || !user) {
-      toast.error("Please login first");
-      navigate("/login");
+    if (!transactionId.trim() || transactionId.length < 10) {
+      toast.error("Please enter a valid 12-digit Transaction ID (UTR)");
       return;
     }
 
     setIsSubmitting(true);
-    
     try {
-      // 3. Insert into Real Database (payment_requests table)
+      // Supabase Entry
       const { error } = await supabase.from('payment_requests').insert({
         user_id: user.id,
         course_id: courseId,
@@ -94,232 +108,147 @@ const BuyCourse = () => {
 
       if (error) throw error;
 
-      toast.success("Payment submitted for verification! You'll get access within 24 hours.");
       setStep("verify");
+      toast.success("Payment submitted successfully!");
     } catch (error: any) {
       console.error("Payment Error:", error);
-      toast.error("Failed to submit payment: " + error.message);
+      toast.error("Failed: " + error.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const benefits = [
-    "Lifetime access to all lessons",
-    "Downloadable study materials",
-    "Practice worksheets & quizzes",
-    "Certificate of completion",
-    "Doubt clearing support",
-  ];
-
-  // Loading View
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-2 text-muted-foreground">Loading Course...</span>
-      </div>
-    );
-  }
-
-  // Error View (If invalid ID)
-  if (!course) {
-    return (
-      <div className="min-h-screen flex items-center justify-center flex-col">
-        <h2 className="text-xl font-bold mb-2">Course not found</h2>
-        <Button onClick={() => navigate('/courses')}>Go Back</Button>
-      </div>
-    );
-  }
+  if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  if (!course) return <div className="p-10 text-center">Course not found <Button onClick={() => navigate(-1)}>Back</Button></div>;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gray-50 pb-10">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-primary text-primary-foreground shadow-md">
-        <div className="flex items-center gap-3 px-4 py-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate(-1)}
-            className="text-primary-foreground hover:bg-primary-foreground/10"
-          >
+      <header className="sticky top-0 z-50 bg-white border-b px-4 py-3 flex items-center gap-3 shadow-sm">
+        <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
             <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="text-lg font-semibold">Buy Course</h1>
-        </div>
+        </Button>
+        <h1 className="font-semibold text-lg">Checkout</h1>
       </header>
 
-      <main className="max-w-2xl mx-auto p-4 pb-8">
-        {/* Course Card */}
-        <Card className="mb-6 overflow-hidden">
-          <div className="relative h-40">
-            {/* 4. Updated image source to use Supabase image_url */}
-            <img
-              src={course.image_url || "https://via.placeholder.com/600x400"}
-              alt={course.title}
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-            <div className="absolute bottom-3 left-3 right-3">
-              <Badge className="mb-2">Grade {course.grade}</Badge>
-              <h2 className="text-xl font-bold text-white">{course.title}</h2>
-            </div>
-          </div>
-          <CardContent className="p-4">
-            <p className="text-muted-foreground mb-4">{course.description}</p>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <BookOpen className="h-4 w-4" />6 Lessons
-              </span>
-              <span className="flex items-center gap-1">
-                <Clock className="h-4 w-4" />2 Hours
-              </span>
-            </div>
-          </CardContent>
+      <main className="max-w-xl mx-auto p-4 mt-4">
+        
+        {/* Course Summary */}
+        <Card className="mb-6 shadow-sm border-primary/20">
+            <CardContent className="p-4 flex gap-4">
+                <img src={course.image_url} alt="Course" className="w-20 h-20 rounded-md object-cover bg-gray-200"/>
+                <div>
+                    <h2 className="font-bold text-lg leading-tight">{course.title}</h2>
+                    <Badge variant="secondary" className="mt-1">Grade {course.grade}</Badge>
+                    <p className="text-xl font-bold text-primary mt-1">₹{course.price}</p>
+                </div>
+            </CardContent>
         </Card>
 
         {step === "details" && (
-          <>
-            {/* Benefits */}
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="text-lg">What you'll get</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {benefits.map((benefit, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <CheckCircle className="h-5 w-5 text-success flex-shrink-0" />
-                    <span className="text-sm">{benefit}</span>
-                  </div>
-                ))}
-              </CardContent>
+            <Card>
+                <CardHeader><CardTitle>Payment Details</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex justify-between py-2 border-b">
+                        <span className="text-gray-600">Course Fee</span>
+                        <span>₹{course.price}</span>
+                    </div>
+                    <div className="flex justify-between py-2 font-bold text-lg">
+                        <span>Total Payable</span>
+                        <span>₹{course.price}</span>
+                    </div>
+                    <div className="bg-blue-50 p-3 rounded-lg flex gap-3 text-sm text-blue-800">
+                        <Shield className="w-5 h-5 flex-shrink-0"/>
+                        <p>Secure payment via UPI. Access granted after admin verification.</p>
+                    </div>
+                    <Button className="w-full text-lg h-12" onClick={handleProceed}>
+                        Pay Now
+                    </Button>
+                </CardContent>
             </Card>
-
-            {/* Price & CTA */}
-            <Card className="bg-primary/5 border-primary/20">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Course Price</p>
-                    {/* Updated to real price */}
-                    <p className="text-3xl font-bold text-primary">₹{course.price}</p>
-                  </div>
-                  <Badge variant="secondary" className="text-xs">
-                    <Shield className="h-3 w-3 mr-1" />
-                    Secure Payment
-                  </Badge>
-                </div>
-                <Button
-                  className="w-full"
-                  size="lg"
-                  onClick={() => {
-                    if (!isAuthenticated) {
-                      toast.error("Please login first");
-                      navigate("/login");
-                      return;
-                    }
-                    setStep("payment");
-                  }}
-                >
-                  Proceed to Payment
-                </Button>
-              </CardContent>
-            </Card>
-          </>
         )}
 
         {step === "payment" && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Complete Payment</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* UPI Details */}
-              <div className="bg-muted/50 rounded-lg p-4">
-                <p className="text-sm text-muted-foreground mb-2">
-                  Pay ₹{course.price} to this UPI ID:
-                </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 bg-background px-3 py-2 rounded border font-mono text-lg">
-                    {UPI_ID}
-                  </code>
-                  <Button size="icon" variant="outline" onClick={handleCopyUPI}>
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+            <Card>
+                <CardHeader className="text-center pb-2">
+                    <CardTitle>Scan or Pay via App</CardTitle>
+                    <p className="text-sm text-muted-foreground">Paying to: {MERCHANT_NAME}</p>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                    
+                    {/* QR Code Section */}
+                    <div className="flex flex-col items-center justify-center p-4 bg-white border rounded-xl shadow-sm">
+                         <img src={qrCodeUrl} alt="UPI QR" className="w-48 h-48 mix-blend-multiply" />
+                         <p className="text-xs text-gray-400 mt-2">Scan with any UPI App</p>
+                    </div>
 
-              {/* QR Code Placeholder */}
-              <div className="flex justify-center">
-                <div className="w-48 h-48 bg-muted rounded-lg flex items-center justify-center border-2 border-dashed">
-                  <p className="text-sm text-muted-foreground text-center px-4">
-                    Scan using any UPI App
-                  </p>
-                </div>
-              </div>
+                    {/* Direct App Buttons (Mobile Optimized) */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <Button variant="outline" className="h-12 border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => openApp('gpay')}>
+                            Google Pay
+                        </Button>
+                        <Button variant="outline" className="h-12 border-purple-200 text-purple-700 hover:bg-purple-50" onClick={() => openApp('phonepe')}>
+                            PhonePe
+                        </Button>
+                        <Button variant="outline" className="h-12 border-sky-200 text-sky-700 hover:bg-sky-50" onClick={() => openApp('paytm')}>
+                            Paytm
+                        </Button>
+                        <Button variant="outline" className="h-12 border-orange-200 text-orange-700 hover:bg-orange-50" onClick={() => openApp('bhim')}>
+                            BHIM / Other
+                        </Button>
+                    </div>
 
-              {/* Transaction ID */}
-              <div className="space-y-2">
-                <Label htmlFor="txnId">UPI Transaction ID / Reference Number</Label>
-                <Input
-                  id="txnId"
-                  placeholder="Enter 12-digit transaction ID"
-                  value={transactionId}
-                  onChange={(e) => setTransactionId(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  After payment, enter the UPI reference number from your payment app
-                </p>
-              </div>
+                    {/* Manual Copy Section */}
+                    <div className="flex items-center gap-2 bg-gray-100 p-3 rounded-lg">
+                        <span className="text-xs text-gray-500 font-mono flex-1 break-all">{MERCHANT_UPI}</span>
+                        <Button size="sm" variant="ghost" onClick={handleCopyUPI}>
+                            <Copy className="h-4 w-4" />
+                        </Button>
+                    </div>
 
-              {/* Submit */}
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={handlePaymentSubmit}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Submit Payment Details
-                  </>
-                )}
-              </Button>
+                    <hr />
 
-              <Button
-                variant="ghost"
-                className="w-full"
-                onClick={() => setStep("details")}
-              >
-                Back
-              </Button>
-            </CardContent>
-          </Card>
+                    {/* Transaction ID Input */}
+                    <div className="space-y-3">
+                        <Label>Enter Transaction ID (UTR)</Label>
+                        <Input 
+                            placeholder="e.g. 3214xxxx5678" 
+                            value={transactionId}
+                            onChange={(e) => setTransactionId(e.target.value)}
+                        />
+                        <p className="text-xs text-red-500">* Payment ke baad UTR number dalna zaruri hai.</p>
+                        
+                        <Button 
+                            className="w-full h-12 text-lg" 
+                            onClick={handlePaymentSubmit}
+                            disabled={isSubmitting}
+                        >
+                            {isSubmitting ? <Loader2 className="animate-spin mr-2"/> : <Upload className="mr-2 h-5 w-5"/>}
+                            Submit Payment
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
         )}
 
         {step === "verify" && (
-          <Card className="text-center">
-            <CardContent className="py-8">
-              <div className="w-16 h-16 bg-success/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle className="h-8 w-8 text-success" />
-              </div>
-              <h3 className="text-xl font-bold mb-2">Payment Submitted!</h3>
-              <p className="text-muted-foreground mb-6">
-                Your payment is being verified. You'll get course access within 24 hours.
-                We'll notify you via email.
-              </p>
-              <Button onClick={() => navigate("/dashboard")}>
-                Go to Dashboard
-              </Button>
-            </CardContent>
-          </Card>
+            <Card className="text-center py-10">
+                <CardContent>
+                    <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <CheckCircle className="w-10 h-10" />
+                    </div>
+                    <h2 className="text-2xl font-bold mb-2">Request Submitted!</h2>
+                    <p className="text-muted-foreground mb-6">
+                        Admin will verify Transaction ID: <span className="font-mono text-black">{transactionId}</span>.
+                        <br/>Course will be unlocked shortly.
+                    </p>
+                    <Button onClick={() => navigate("/dashboard")} className="w-full">
+                        Go to Dashboard
+                    </Button>
+                </CardContent>
+            </Card>
         )}
+
       </main>
     </div>
   );
