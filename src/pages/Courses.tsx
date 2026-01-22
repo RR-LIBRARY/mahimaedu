@@ -26,14 +26,19 @@ const Courses = () => {
     try {
       setLoading(true);
       // Fetch data matching your SQL columns
+      // Console log lagaya hai taaki hum check kar sakein ki data aa raha hai ya error
       const { data, error } = await supabase
         .from('courses')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase Error:", error);
+        throw error;
+      }
       
       if (data) {
+        console.log("Fetched Data:", data); // Console me data dikhega
         setCourseList(data);
       }
     } catch (error) {
@@ -46,11 +51,10 @@ const Courses = () => {
   // 3. Generate Grade Options (1 to 12)
   const gradeOptions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
-  // 4. Filtering Logic on Real Data (FIXED HERE)
+  // 4. Filtering Logic on Real Data
   const filteredCourses = selectedGrade === "all"
     ? courseList
     : courseList.filter((c) => String(c.grade) === String(selectedGrade));
-    // Maine yaha dono taraf String() laga diya hai taki "10" aur 10 barabar mane jaye.
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -71,6 +75,23 @@ const Courses = () => {
       </div>
 
       <main className="flex-1 p-4 space-y-4">
+        
+        {/* --- DEBUG BOX (Testing ke liye) --- */}
+        {/* Ye box sirf ye dikhane ke liye hai ki database se kya aa raha hai */}
+        <div className="p-4 bg-yellow-100 border border-yellow-500 rounded-md text-sm text-black mb-4">
+            <p className="font-bold border-b border-yellow-600 mb-2 pb-1">🔍 Debugging Panel (Only for Testing)</p>
+            <p><strong>Loading Status:</strong> {loading ? "Loading..." : "Finished"}</p>
+            <p><strong>Total Courses Found:</strong> {courseList.length}</p>
+            <p><strong>Raw Data from DB:</strong></p>
+            <pre className="bg-white p-2 mt-1 rounded border overflow-auto max-h-32 text-xs">
+                {JSON.stringify(courseList, null, 2)}
+            </pre>
+            <p className="mt-2 text-xs text-gray-600">
+                * Agar yahan "[]" (khali bracket) dikh raha hai, to iska matlab Supabase RLS Policy data ko rok rahi hai.
+            </p>
+        </div>
+        {/* --- END DEBUG BOX --- */}
+
         {/* Filter Section */}
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
