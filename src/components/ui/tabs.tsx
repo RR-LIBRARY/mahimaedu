@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { cn } from "@/lib/utils"; // Ensure utils.ts exists
+import { cn } from "@/lib/utils"; // Ye line zaroori hai
 
 const TabsContext = React.createContext<{
   activeTab: string;
